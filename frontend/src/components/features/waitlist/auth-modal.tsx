@@ -1,7 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
-import AllHandsLogo from "#/assets/branding/all-hands-logo.svg?react";
+import FlameForgeLogoSVG from "#/assets/branding/flame-forge-logo.svg?react";
 import { ModalBackdrop } from "#/components/shared/modals/modal-backdrop";
 import { ModalBody } from "#/components/shared/modals/modal-body";
 import { BrandButton } from "../settings/brand-button";
@@ -53,7 +53,7 @@ export function AuthModal({ githubAuthUrl, appMode }: AuthModalProps) {
   return (
     <ModalBackdrop>
       <ModalBody className="border border-tertiary">
-        <AllHandsLogo width={68} height={46} />
+        <FlameForgeLogoSVG className="h-12 w-auto" />
         <div className="flex flex-col gap-2 w-full items-center text-center">
           <h1 className="text-2xl font-bold">
             {t(I18nKey.AUTH$SIGN_IN_WITH_IDENTITY_PROVIDER)}

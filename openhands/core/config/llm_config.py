@@ -20,6 +20,8 @@ class LLMConfig(BaseModel):
         aws_access_key_id: The AWS access key ID.
         aws_secret_access_key: The AWS secret access key.
         aws_region_name: The AWS region name.
+        openrouter_site_url: The site URL for OpenRouter.
+        openrouter_app_name: The app name for OpenRouter.
         num_retries: The number of retries to attempt.
         retry_multiplier: The multiplier for the exponential backoff.
         retry_min_wait: The minimum time to wait between retries, in seconds. This is exponential backoff minimum. For models with very low limits, this can be set to 15-20.
@@ -56,7 +58,7 @@ class LLMConfig(BaseModel):
     aws_secret_access_key: SecretStr | None = Field(default=None)
     aws_region_name: str | None = Field(default=None)
     openrouter_site_url: str = Field(default='https://docs.all-hands.dev/')
-    openrouter_app_name: str = Field(default='OpenHands')
+    openrouter_app_name: str = Field(default='FlameForge')
     # total wait time: 5 + 10 + 20 + 30 = 65 seconds
     num_retries: int = Field(default=4)
     retry_multiplier: float = Field(default=2)
@@ -176,3 +178,10 @@ class LLMConfig(BaseModel):
         # Azure issue: https://github.com/All-Hands-AI/OpenHands/issues/7755
         if self.model.startswith('azure') and self.api_version is None:
             self.api_version = '2024-12-01-preview'
+
+        # Configure OpenRouter if needed
+        if self.model.startswith('openrouter/') or self.custom_llm_provider == 'openrouter':
+            if not self.base_url:
+                self.base_url = 'https://openrouter.ai/api/v1'
+            if not self.custom_llm_provider:
+                self.custom_llm_provider = 'openrouter'

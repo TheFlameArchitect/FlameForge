@@ -10,11 +10,14 @@ from openhands.events.action.message import MessageAction, SystemMessageAction
 from openhands.events.event import EventSource
 from openhands.events.observation import Observation
 from openhands.memory.condenser.condenser import Condensation, RollingCondenser, View
+import time
 
 
 class ConversationWindowCondenser(RollingCondenser):
     def __init__(self) -> None:
         super().__init__()
+        self._last_condensation_time = 0
+        self._min_interval = 1.0  # Minimum time between condensations in seconds
 
     def get_condensation(self, view: View) -> Condensation:
         """Apply conversation window truncation similar to _apply_conversation_window.
@@ -173,7 +176,26 @@ class ConversationWindowCondenser(RollingCondenser):
         return Condensation(action=action)
 
     def should_condense(self, view: View) -> bool:
-        return view.unhandled_condensation_request
+        """Determine if a view should be condensed.
+
+        Adds rate limiting and checks to prevent infinite loops.
+        """
+        current_time = time.time()
+
+        # If we've condensed recently, don't condense again
+        if current_time - self._last_condensation_time < self._min_interval:
+            return False
+
+        # Only condense if there's an unhandled request and we have events to condense
+        should_condense = (
+            view.unhandled_condensation_request and
+            len(view.events) > 2  # Ensure we have enough events to condense
+        )
+
+        if should_condense:
+            self._last_condensation_time = current_time
+
+        return should_condense
 
     @classmethod
     def from_config(

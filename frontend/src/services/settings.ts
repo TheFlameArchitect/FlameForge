@@ -3,8 +3,8 @@ import { Settings } from "#/types/settings";
 export const LATEST_SETTINGS_VERSION = 5;
 
 export const DEFAULT_SETTINGS: Settings = {
-  LLM_MODEL: "anthropic/claude-sonnet-4-20250514",
-  LLM_BASE_URL: "",
+  LLM_MODEL: "openrouter/anthropic/claude-3-sonnet",
+  LLM_BASE_URL: "https://openrouter.ai/api/v1",
   AGENT: "CodeActAgent",
   LANGUAGE: "en",
   LLM_API_KEY_SET: false,
@@ -15,7 +15,6 @@ export const DEFAULT_SETTINGS: Settings = {
   PROVIDER_TOKENS_SET: {},
   ENABLE_DEFAULT_CONDENSER: true,
   ENABLE_SOUND_NOTIFICATIONS: false,
-  USER_CONSENTS_TO_ANALYTICS: false,
   ENABLE_PROACTIVE_CONVERSATION_STARTERS: false,
   SEARCH_API_KEY: "",
   IS_NEW_USER: true,

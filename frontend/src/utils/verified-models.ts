@@ -1,5 +1,11 @@
 // Here are the list of verified models and providers that we know work well with OpenHands.
-export const VERIFIED_PROVIDERS = ["openai", "azure", "anthropic", "deepseek"];
+export const VERIFIED_PROVIDERS = [
+  "openai",
+  "azure",
+  "anthropic",
+  "openrouter",
+  "deepseek",
+];
 export const VERIFIED_MODELS = [
   "o3-mini-2025-01-31",
   "o3-2025-04-16",
@@ -8,6 +14,9 @@ export const VERIFIED_MODELS = [
   "claude-3-7-sonnet-20250219",
   "claude-sonnet-4-20250514",
   "claude-opus-4-20250514",
+  "claude-3-sonnet",
+  "claude-3-opus",
+  "claude-3-haiku",
   "deepseek-chat",
 ];
 
@@ -25,6 +34,17 @@ export const VERIFIED_OPENAI_MODELS = [
   "o4-mini",
   "o4-mini-2025-04-16",
   "codex-mini-latest",
+];
+
+// OpenRouter models that don't need a provider prefix
+export const VERIFIED_OPENROUTER_MODELS = [
+  "anthropic/claude-3-sonnet",
+  "anthropic/claude-3-opus",
+  "anthropic/claude-3-haiku",
+  "anthropic/claude-2.1",
+  "google/gemini-pro",
+  "meta/llama2-70b",
+  "mistral/mistral-large",
 ];
 
 // LiteLLM does not return the compatible Anthropic models with the provider, so we list them here to set them ourselves

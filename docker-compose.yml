@@ -18,6 +18,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ~/.openhands:/.openhands
       - ${WORKSPACE_BASE:-$PWD/workspace}:/opt/workspace_base
+      # Development volume mounts for instant code changes
+      - ./openhands:/app/openhands
+      - ./microagents:/app/microagents
+      - ./frontend/dist:/app/frontend/dist
     pull_policy: build
     stdin_open: true
     tty: true

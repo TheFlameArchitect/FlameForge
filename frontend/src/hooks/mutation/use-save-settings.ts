@@ -20,7 +20,6 @@ const saveSettingsMutationFn = async (settings: Partial<PostSettings>) => {
     remote_runtime_resource_factor: settings.REMOTE_RUNTIME_RESOURCE_FACTOR,
     enable_default_condenser: settings.ENABLE_DEFAULT_CONDENSER,
     enable_sound_notifications: settings.ENABLE_SOUND_NOTIFICATIONS,
-    user_consents_to_analytics: settings.user_consents_to_analytics,
     provider_tokens_set: settings.PROVIDER_TOKENS_SET,
     mcp_config: settings.MCP_CONFIG,
     enable_proactive_conversation_starters:

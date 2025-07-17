@@ -207,6 +207,19 @@ class CondensationRequestAction(Action):
 
     action: str = ActionType.CONDENSATION_REQUEST
 
+    def __post_init__(self):
+        """Prevent creation of CondensationRequestAction - condensation is disabled."""
+        import os
+        from openhands.core.logger import openhands_logger as logger
+
+        # NUCLEAR OPTION: Refuse to create this action at all
+        logger.error("🚫 CONDENSATION REQUEST ACTION CREATION BLOCKED! 🚫")
+        logger.error("🚫 Condensation has been permanently disabled in FlameForge 🚫")
+        print("🚫 ATTEMPTED TO CREATE CondensationRequestAction - BLOCKED! 🚫")
+
+        # Convert this to a null action instead
+        self.action = "null"
+
     @property
     def message(self) -> str:
-        return 'Requesting a condensation of the conversation history.'
+        return 'Condensation request blocked - condensation disabled in FlameForge'

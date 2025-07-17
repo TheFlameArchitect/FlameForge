@@ -354,6 +354,9 @@ class AgentController:
             if isinstance(event, CondensationAction):
                 return True
             if isinstance(event, CondensationRequestAction):
+                # Don't step for condensation requests if disabled
+                if not self.agent.config.enable_condensation_request:
+                    return False
                 return True
             return False
         if isinstance(event, Observation):
@@ -409,6 +412,10 @@ class AgentController:
         if hasattr(event, 'hidden') and event.hidden:
             return
 
+        # Completely ignore condensation request actions if condensation is disabled
+        if isinstance(event, CondensationRequestAction) and not self.agent.config.enable_condensation_request:
+            return
+
         self.state_tracker.add_history(event)
 
         if isinstance(event, Action):
@@ -433,64 +440,72 @@ class AgentController:
             )
 
     async def _handle_action(self, action: Action) -> None:
-        """Handles an Action from the agent or delegate."""
-        if isinstance(action, ChangeAgentStateAction):
-            await self.set_agent_state_to(action.agent_state)  # type: ignore
-        elif isinstance(action, MessageAction):
-            await self._handle_message_action(action)
-        elif isinstance(action, AgentDelegateAction):
-            await self.start_delegate(action)
-            assert self.delegate is not None
-            # Post a MessageAction with the task for the delegate
-            if 'task' in action.inputs:
-                self.event_stream.add_event(
-                    MessageAction(content='TASK: ' + action.inputs['task']),
-                    EventSource.USER,
-                )
-                await self.delegate.set_agent_state_to(AgentState.RUNNING)
-            return
-
-        elif isinstance(action, AgentFinishAction):
-            self.state.outputs = action.outputs
-            await self.set_agent_state_to(AgentState.FINISHED)
-        elif isinstance(action, AgentRejectAction):
-            self.state.outputs = action.outputs
-            await self.set_agent_state_to(AgentState.REJECTED)
-
-    async def _handle_observation(self, observation: Observation) -> None:
-        """Handles observation from the event stream.
+        """Handles actions from the event stream.
 
         Args:
-            observation (observation): The observation to handle.
+            action (Action): The action to handle.
         """
-        observation_to_print = copy.deepcopy(observation)
-        if len(observation_to_print.content) > self.agent.llm.config.max_message_chars:
-            observation_to_print.content = truncate_content(
-                observation_to_print.content, self.agent.llm.config.max_message_chars
-            )
-        # Use info level if LOG_ALL_EVENTS is set
-        log_level = 'info' if os.getenv('LOG_ALL_EVENTS') in ('true', '1') else 'debug'
-        self.log(
-            log_level, str(observation_to_print), extra={'msg_type': 'OBSERVATION'}
-        )
-
-        # TODO: these metrics come from the draft editor, and they get accumulated into controller's state metrics and the agent's llm metrics
-        # In the future, we should have a more principled way to sharing metrics across all LLM instances for a given conversation
-        if observation.llm_metrics is not None:
-            self.state_tracker.merge_metrics(observation.llm_metrics)
-
-        # this happens for runnable actions and microagent actions
-        if self._pending_action and self._pending_action.id == observation.cause:
-            if self.state.agent_state == AgentState.AWAITING_USER_CONFIRMATION:
+        if isinstance(action, MessageAction):
+            await self._handle_message_action(action)
+        elif isinstance(action, CondensationRequestAction):
+            # Ignore condensation requests if disabled
+            if not self.agent.config.enable_condensation_request:
                 return
+            # Don't process condensation requests if we're already condensing
+            if self._is_condensing:
+                return
+            self._is_condensing = True
+            try:
+                await self._handle_condensation_request(action)
+            finally:
+                self._is_condensing = False
+        elif isinstance(action, CondensationAction):
+            # Don't process condensation actions if we're already condensing
+            if self._is_condensing:
+                return
+            self._is_condensing = True
+            try:
+                await self._handle_condensation(action)
+            finally:
+                self._is_condensing = False
+        elif isinstance(action, AgentDelegateAction):
+            await self._handle_delegate_action(action)
+        elif isinstance(action, AgentFinishAction):
+            await self._handle_finish_action(action)
+        elif isinstance(action, AgentRejectAction):
+            await self._handle_reject_action(action)
+        elif isinstance(action, RecallAction):
+            await self._handle_recall_action(action)
+        elif isinstance(action, ChangeAgentStateAction):
+            await self._handle_change_agent_state_action(action)
+        # Tool actions are handled automatically by the event stream/runtime system
 
-            self._pending_action = None
+    async def _handle_condensation_request(self, action: CondensationRequestAction) -> None:
+        """Handle a condensation request action.
 
-            if self.state.agent_state == AgentState.USER_CONFIRMED:
-                await self.set_agent_state_to(AgentState.RUNNING)
-            if self.state.agent_state == AgentState.USER_REJECTED:
-                await self.set_agent_state_to(AgentState.AWAITING_USER_INPUT)
+        This is called when the agent requests that the history be condensed.
+        """
+        # Don't do anything if condensation is disabled
+        if not self.agent.config.enable_condensation_request:
             return
+
+        # Let the state tracker know we want to condense
+        self.state_tracker.request_condensation()
+
+    async def _handle_condensation(self, action: CondensationAction) -> None:
+        """Handle a condensation action.
+
+        This is called when a condenser has produced a condensation of the history.
+        """
+        # Update the state with the condensed history
+        self.state_tracker.apply_condensation(action)
+
+        # If we have a summary, add it as an observation
+        if action.summary:
+            self.event_stream.add_event(
+                AgentCondensationObservation(content=action.summary),
+                EventSource.ENVIRONMENT,
+            )
 
     async def _handle_message_action(self, action: MessageAction) -> None:
         """Handles message actions from the event stream.
@@ -514,6 +529,12 @@ class AgentController:
             is_first_user_message = (
                 action.id == first_user_message.id if first_user_message else False
             )
+
+            # First ensure the agent is running
+            if self.get_agent_state() != AgentState.RUNNING:
+                await self.set_agent_state_to(AgentState.RUNNING)
+
+            # Then trigger the recall action
             recall_type = (
                 RecallType.WORKSPACE_CONTEXT
                 if is_first_user_message
@@ -524,9 +545,6 @@ class AgentController:
             self._pending_action = recall_action
             # this is source=USER because the user message is the trigger for the microagent retrieval
             self.event_stream.add_event(recall_action, EventSource.USER)
-
-            if self.get_agent_state() != AgentState.RUNNING:
-                await self.set_agent_state_to(AgentState.RUNNING)
 
         elif action.source == EventSource.AGENT:
             # If the agent is waiting for a response, set the appropriate state
@@ -847,7 +865,7 @@ class AgentController:
                     # For SambaNova context window errors - only match when both patterns are present
                     or isinstance(e, ContextWindowExceededError)
                 ):
-                    if self.agent.config.enable_history_truncation:
+                    if self.agent.config.enable_history_truncation and self.agent.config.enable_condensation_request:
                         self.event_stream.add_event(
                             CondensationRequestAction(), EventSource.AGENT
                         )
@@ -1125,3 +1143,44 @@ class AgentController:
 
     def save_state(self):
         self.state_tracker.save_state()
+
+    async def _handle_recall_action(self, action: RecallAction) -> None:
+        """Handle a recall action.
+
+        This is called when the agent wants to recall (retrieve) information.
+        Memory will take care of the rest.
+        """
+        pass
+
+    async def _handle_change_agent_state_action(self, action: ChangeAgentStateAction) -> None:
+        """Handle a change agent state action.
+
+        This is called when a ChangeAgentStateAction is received from the event stream,
+        typically from the agent session initialization.
+
+        Args:
+            action (ChangeAgentStateAction): The action containing the new agent state.
+        """
+        try:
+            new_state = AgentState(action.agent_state)
+            await self.set_agent_state_to(new_state)
+        except ValueError:
+            self.log(
+                'warning',
+                f'Invalid agent state in ChangeAgentStateAction: {action.agent_state}',
+                extra={'msg_type': 'INVALID_AGENT_STATE'},
+            )
+
+    async def _handle_observation(self, observation: Observation) -> None:
+        """Handle an observation from the event stream.
+
+        This is called when an Observation is received from the event stream.
+        Most observations are processed automatically by the runtime and event stream,
+        so this method typically doesn't need to do anything special.
+
+        Args:
+            observation (Observation): The observation to handle.
+        """
+        # Most observations are handled automatically by the event stream/runtime
+        # This method exists to satisfy the event handling interface
+        pass

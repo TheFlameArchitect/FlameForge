@@ -157,6 +157,17 @@ class Session:
         llm = self._create_llm(agent_cls)
         agent_config = self.config.get_agent_config(agent_cls)
 
+        # CRITICAL FIX: Ensure condenser is never None to prevent agent initialization failures
+        if agent_config.condenser is None:
+            from openhands.core.config.condenser_config import LLMSummarizingCondenserConfig
+            self.logger.warning(
+                f'Agent config condenser is None, setting default LLM summarizing condenser'
+            )
+            agent_config.condenser = LLMSummarizingCondenserConfig(
+                llm_config=llm.config,
+                type='llm'
+            )
+
         if settings.enable_default_condenser:
             # Default condenser chains three condensers together:
             # 1. a conversation window condenser that handles explicit

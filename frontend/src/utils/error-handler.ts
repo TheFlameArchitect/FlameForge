@@ -1,42 +1,43 @@
-import posthog from "posthog-js";
-import { handleStatusMessage } from "#/services/actions";
-import { displayErrorToast } from "./custom-toast-handlers";
+import { AxiosError } from "axios";
+import { toast } from "react-hot-toast";
+import { retrieveAxiosErrorMessage } from "./retrieve-axios-error-message";
 
-interface ErrorDetails {
-  message: string;
-  source?: string;
-  metadata?: Record<string, unknown>;
-  msgId?: string;
+export function showErrorToast(error: unknown) {
+  if (error instanceof Error) {
+    if ((error as AxiosError).isAxiosError) {
+      const message = retrieveAxiosErrorMessage(error as AxiosError);
+      toast.error(message);
+    } else {
+      toast.error(error.message);
+    }
+  } else {
+    toast.error("An unknown error occurred");
+  }
 }
 
-export function trackError({ message, source, metadata = {} }: ErrorDetails) {
-  const error = new Error(message);
-  posthog.captureException(error, {
-    error_source: source || "unknown",
-    ...metadata,
-  });
+export function showChatError(error: unknown) {
+  if (error instanceof Error) {
+    if ((error as AxiosError).isAxiosError) {
+      const message = retrieveAxiosErrorMessage(error as AxiosError);
+      toast.error(message, {
+        duration: 5000,
+        position: "bottom-right",
+      });
+    } else {
+      toast.error(error.message, {
+        duration: 5000,
+        position: "bottom-right",
+      });
+    }
+  } else {
+    toast.error("An unknown error occurred", {
+      duration: 5000,
+      position: "bottom-right",
+    });
+  }
 }
 
-export function showErrorToast({
-  message,
-  source,
-  metadata = {},
-}: ErrorDetails) {
-  trackError({ message, source, metadata });
-  displayErrorToast(message);
-}
-
-export function showChatError({
-  message,
-  source,
-  metadata = {},
-  msgId,
-}: ErrorDetails) {
-  trackError({ message, source, metadata });
-  handleStatusMessage({
-    type: "error",
-    message,
-    id: msgId,
-    status_update: true,
-  });
+export function trackError(error: unknown) {
+  console.error("Error:", error);
+  showErrorToast(error);
 }

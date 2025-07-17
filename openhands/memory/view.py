@@ -18,6 +18,7 @@ class View(BaseModel):
 
     events: list[Event]
     unhandled_condensation_request: bool = False
+    _last_condensation_id: int | None = None
 
     def __len__(self) -> int:
         return len(self.events)
@@ -48,13 +49,35 @@ class View(BaseModel):
     def from_events(events: list[Event]) -> View:
         """Create a view from a list of events, respecting the semantics of any condensation events."""
         forgotten_event_ids: set[int] = set()
+        last_condensation_id = None
+        unhandled_condensation_request = False
+
+        # First pass - identify forgotten events and last condensation
         for event in events:
             if isinstance(event, CondensationAction):
                 forgotten_event_ids.update(event.forgotten)
-                # Make sure we also forget the condensation action itself
                 forgotten_event_ids.add(event.id)
-            if isinstance(event, CondensationRequestAction):
+                last_condensation_id = event.id
+            elif isinstance(event, CondensationRequestAction):
                 forgotten_event_ids.add(event.id)
+
+        # Second pass - check for unhandled requests
+        if last_condensation_id is not None:
+            # Only look for unhandled requests after the last condensation
+            found_last_condensation = False
+            for event in events:
+                if not found_last_condensation:
+                    if event.id == last_condensation_id:
+                        found_last_condensation = True
+                    continue
+                if isinstance(event, CondensationRequestAction):
+                    unhandled_condensation_request = True
+                    break
+        else:
+            # If no condensation yet, any request is unhandled
+            unhandled_condensation_request = any(
+                isinstance(event, CondensationRequestAction) for event in events
+            )
 
         kept_events = [event for event in events if event.id not in forgotten_event_ids]
 
@@ -72,22 +95,12 @@ class View(BaseModel):
 
         if summary is not None and summary_offset is not None:
             logger.info(f'Inserting summary at offset {summary_offset}')
-
             kept_events.insert(
                 summary_offset, AgentCondensationObservation(content=summary)
             )
 
-        # Check for an unhandled condensation request -- these are events closer to the
-        # end of the list than any condensation action.
-        unhandled_condensation_request = False
-        for event in reversed(events):
-            if isinstance(event, CondensationAction):
-                break
-            if isinstance(event, CondensationRequestAction):
-                unhandled_condensation_request = True
-                break
-
         return View(
             events=kept_events,
             unhandled_condensation_request=unhandled_condensation_request,
+            _last_condensation_id=last_condensation_id
         )

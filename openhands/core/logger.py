@@ -351,7 +351,7 @@ def log_uncaught_exceptions(
 
 
 sys.excepthook = log_uncaught_exceptions
-openhands_logger = logging.getLogger('openhands')
+openhands_logger = logging.getLogger('flameforge')
 current_log_level = logging.INFO
 
 if LOG_LEVEL in logging.getLevelNamesMapping():
@@ -375,7 +375,6 @@ openhands_logger.propagate = False
 openhands_logger.debug('Logging initialized')
 
 LOG_DIR = os.path.join(
-    # parent dir of openhands/core (i.e., root of the repo)
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     'logs',
 )
@@ -383,7 +382,7 @@ LOG_DIR = os.path.join(
 if LOG_TO_FILE:
     openhands_logger.addHandler(
         get_file_handler(LOG_DIR, current_log_level)
-    )  # default log to project root
+    )
     openhands_logger.debug(f'Logging to file in: {LOG_DIR}')
 
 # Exclude LiteLLM from logging output as it can leak keys

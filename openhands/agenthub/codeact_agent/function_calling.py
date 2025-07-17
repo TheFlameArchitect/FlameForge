@@ -209,7 +209,9 @@ def response_to_actions(
             # CondensationRequestAction
             # ================================================
             elif tool_call.function.name == CondensationRequestTool['function']['name']:
-                action = CondensationRequestAction()
+                logger.error(f"🚫 CONDENSATION TOOL CALL BLOCKED: {tool_call.function.name}")
+                # COMPLETELY IGNORE this tool call - don't create any action
+                continue
 
             # ================================================
             # BrowserTool

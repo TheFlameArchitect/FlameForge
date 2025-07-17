@@ -154,8 +154,6 @@ async def run_session(
 
     event_stream = runtime.event_stream
 
-    usage_metrics = UsageMetrics()
-
     async def prompt_for_next_task(agent_state: str) -> None:
         nonlocal reload_microagents, new_session_requested, exit_reason
         while True:
@@ -174,7 +172,6 @@ async def run_session(
             ) = await handle_commands(
                 next_message,
                 event_stream,
-                usage_metrics,
                 sid,
                 config,
                 current_dir,

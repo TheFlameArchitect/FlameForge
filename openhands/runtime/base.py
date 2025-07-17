@@ -130,26 +130,40 @@ class Runtime(FileEditRuntimeMixin):
         user_id: str | None = None,
         git_provider_tokens: PROVIDER_TOKEN_TYPE | None = None,
     ):
+        self.config = config
+        self.event_stream = event_stream
+        self.sid = sid
+        # environment
+        if env_vars is None:
+            env_vars = {}
+        self.env_vars = env_vars
+        self.action_semaphore = asyncio.Semaphore(1)
+        self.log_buffer = []  # type: ignore[var-annotated]
+        self.status_callback = status_callback
+        self.attach_to_existing = attach_to_existing
+        self.headless_mode = headless_mode
+        self.user_id = user_id
+        self.git_provider_tokens = git_provider_tokens
+
+        # Safety flags to prevent setup methods from running multiple times
+        self._setup_script_executed = False
+        self._git_hooks_setup_executed = False
+
+        # Initialize plugins AFTER setting self.config and other attributes
+        plugins = plugins or []
+        if not self.headless_mode:
+            plugins.append(VSCodeRequirement())
+        self.plugins_to_load = plugins
+        self.plugins: dict[str, Plugin] = {}
+
         self.git_handler = GitHandler(
             execute_shell_fn=self._execute_shell_fn_git_handler
         )
-        self.sid = sid
-        self.event_stream = event_stream
         if event_stream:
             event_stream.subscribe(
                 EventStreamSubscriber.RUNTIME, self.on_event, self.sid
             )
-        self.plugins = (
-            copy.deepcopy(plugins) if plugins is not None and len(plugins) > 0 else []
-        )
-        # add VSCode plugin if not in headless mode
-        if not headless_mode:
-            self.plugins.append(VSCodeRequirement())
 
-        self.status_callback = status_callback
-        self.attach_to_existing = attach_to_existing
-
-        self.config = copy.deepcopy(config)
         atexit.register(self.close)
 
         self.initial_env_vars = _default_env_vars(config.sandbox)
@@ -176,8 +190,6 @@ class Runtime(FileEditRuntimeMixin):
             self, enable_llm_editor=config.get_agent_config().enable_llm_editor
         )
 
-        self.user_id = user_id
-        self.git_provider_tokens = git_provider_tokens
         self.runtime_status = None
 
     @property
@@ -426,9 +438,16 @@ class Runtime(FileEditRuntimeMixin):
 
     def maybe_run_setup_script(self):
         """Run .openhands/setup.sh if it exists in the workspace or repository."""
+        # Safety check to prevent multiple executions
+        if hasattr(self, '_setup_script_executed') and self._setup_script_executed:
+            self.log('debug', 'Setup script already executed, skipping')
+            return
+
         setup_script = '.openhands/setup.sh'
         read_obs = self.read(FileReadAction(path=setup_script))
         if isinstance(read_obs, ErrorObservation):
+            # Mark as executed even if file doesn't exist to prevent retries
+            self._setup_script_executed = True
             return
 
         if self.status_callback:
@@ -451,6 +470,9 @@ class Runtime(FileEditRuntimeMixin):
         # Execute the action
         self.run_action(action)
 
+        # Mark as executed
+        self._setup_script_executed = True
+
     @property
     def workspace_root(self) -> Path:
         """Return the workspace root path."""
@@ -458,9 +480,16 @@ class Runtime(FileEditRuntimeMixin):
 
     def maybe_setup_git_hooks(self):
         """Set up git hooks if .openhands/pre-commit.sh exists in the workspace or repository."""
+        # Safety check to prevent multiple executions
+        if hasattr(self, '_git_hooks_setup_executed') and self._git_hooks_setup_executed:
+            self.log('debug', 'Git hooks already setup, skipping')
+            return
+
         pre_commit_script = '.openhands/pre-commit.sh'
         read_obs = self.read(FileReadAction(path=pre_commit_script))
         if isinstance(read_obs, ErrorObservation):
+            # Mark as executed even if file doesn't exist to prevent retries
+            self._git_hooks_setup_executed = True
             return
 
         if self.status_callback:
@@ -546,6 +575,9 @@ fi
             return
 
         self.log('info', 'Git pre-commit hook installed successfully')
+
+        # Mark as executed
+        self._git_hooks_setup_executed = True
 
     def _load_microagents_from_directory(
         self, microagents_dir: Path, source_description: str

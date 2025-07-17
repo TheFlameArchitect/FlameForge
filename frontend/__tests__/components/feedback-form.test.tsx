@@ -25,7 +25,7 @@ describe("FeedbackForm", () => {
 
   it("should render correctly", () => {
     renderWithProviders(
-      <FeedbackForm polarity="positive" onClose={onCloseMock} />,
+      <FeedbackForm onClose={onCloseMock} />,
     );
 
     screen.getByLabelText(I18nKey.FEEDBACK$EMAIL_LABEL);
@@ -38,7 +38,7 @@ describe("FeedbackForm", () => {
 
   it("should switch between private and public permissions", async () => {
     renderWithProviders(
-      <FeedbackForm polarity="positive" onClose={onCloseMock} />,
+      <FeedbackForm onClose={onCloseMock} />,
     );
     const privateRadio = screen.getByLabelText(I18nKey.FEEDBACK$PRIVATE_LABEL);
     const publicRadio = screen.getByLabelText(I18nKey.FEEDBACK$PUBLIC_LABEL);
@@ -57,7 +57,7 @@ describe("FeedbackForm", () => {
 
   it("should call onClose when the close button is clicked", async () => {
     renderWithProviders(
-      <FeedbackForm polarity="positive" onClose={onCloseMock} />,
+      <FeedbackForm onClose={onCloseMock} />,
     );
     await user.click(
       screen.getByRole("button", { name: I18nKey.FEEDBACK$CANCEL_LABEL }),

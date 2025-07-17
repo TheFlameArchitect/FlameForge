@@ -1,4 +1,36 @@
 {
+    "BRANDING$FLAME_FORGE": {
+        "en": "FlameForge",
+        "ja": "FlameForge",
+        "zh-CN": "FlameForge",
+        "zh-TW": "FlameForge",
+        "ko-KR": "FlameForge",
+        "no": "FlameForge",
+        "it": "FlameForge",
+        "pt": "FlameForge",
+        "es": "FlameForge",
+        "ar": "FlameForge",
+        "fr": "FlameForge",
+        "tr": "FlameForge",
+        "de": "FlameForge",
+        "uk": "FlameForge"
+    },
+    "BRANDING$FLAME_FORGE_LOGO": {
+        "en": "FlameForge Logo",
+        "ja": "FlameForgeロゴ",
+        "zh-CN": "FlameForge标志",
+        "zh-TW": "FlameForge標誌",
+        "ko-KR": "FlameForge 로고",
+        "no": "FlameForge Logo",
+        "it": "Logo FlameForge",
+        "pt": "Logo FlameForge",
+        "es": "Logo de FlameForge",
+        "ar": "شعار FlameForge",
+        "fr": "Logo FlameForge",
+        "tr": "FlameForge Logosu",
+        "de": "FlameForge Logo",
+        "uk": "Логотип FlameForge"
+    },
     "MICROAGENT$NO_REPOSITORY_FOUND": {
         "en": "No repository found to launch microagent",
         "ja": "マイクロエージェントを起動するためのリポジトリが見つかりません",

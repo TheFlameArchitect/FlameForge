@@ -1,6 +1,6 @@
 import { useSelector } from "react-redux";
 import React from "react";
-import posthog from "posthog-js";
+
 import { useParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
@@ -34,15 +34,6 @@ import { useUploadFiles } from "#/hooks/mutation/use-upload-files";
 import { useConfig } from "#/hooks/query/use-config";
 import { validateFiles } from "#/utils/file-validation";
 
-function getEntryPoint(
-  hasRepository: boolean | null,
-  hasReplayJson: boolean | null,
-): string {
-  if (hasRepository) return "github";
-  if (hasReplayJson) return "replay";
-  return "direct";
-}
-
 export function ChatInterface() {
   const { getErrorMessage } = useWSErrorMessage();
   const { send, isLoadingMessages, parsedEvents } = useWsClient();
@@ -62,14 +53,9 @@ export function ChatInterface() {
 
   const { curAgentState } = useSelector((state: RootState) => state.agent);
 
-  const [feedbackPolarity, setFeedbackPolarity] = React.useState<
-    "positive" | "negative"
-  >("positive");
   const [feedbackModalIsOpen, setFeedbackModalIsOpen] = React.useState(false);
   const [messageToSend, setMessageToSend] = React.useState<string | null>(null);
-  const { selectedRepository, replayJson } = useSelector(
-    (state: RootState) => state.initialQuery,
-  );
+
   const params = useParams();
   const { mutate: getTrajectory } = useGetTrajectory();
   const { mutateAsync: uploadFiles } = useUploadFiles();
@@ -99,21 +85,6 @@ export function ChatInterface() {
     // Create mutable copies of the arrays
     const images = [...originalImages];
     const files = [...originalFiles];
-    if (events.length === 0) {
-      posthog.capture("initial_query_submitted", {
-        entry_point: getEntryPoint(
-          selectedRepository !== null,
-          replayJson !== null,
-        ),
-        query_character_length: content.length,
-        replay_json_size: replayJson?.length,
-      });
-    } else {
-      posthog.capture("user_message_sent", {
-        session_message_count: events.length,
-        current_message_length: content.length,
-      });
-    }
 
     // Validate file sizes before any processing
     const allFiles = [...images, ...files];
@@ -146,15 +117,11 @@ export function ChatInterface() {
   };
 
   const handleStop = () => {
-    posthog.capture("stop_button_clicked");
     send(generateAgentStateChangeEvent(AgentState.STOPPED));
   };
 
-  const onClickShareFeedbackActionButton = async (
-    polarity: "positive" | "negative",
-  ) => {
+  const onClickShareFeedbackActionButton = async () => {
     setFeedbackModalIsOpen(true);
-    setFeedbackPolarity(polarity);
   };
 
   const onClickExportTrajectoryButton = () => {
@@ -234,12 +201,8 @@ export function ChatInterface() {
           <div className="flex justify-between relative">
             {config?.APP_MODE !== "saas" && (
               <TrajectoryActions
-                onPositiveFeedback={() =>
-                  onClickShareFeedbackActionButton("positive")
-                }
-                onNegativeFeedback={() =>
-                  onClickShareFeedbackActionButton("negative")
-                }
+                onPositiveFeedback={() => onClickShareFeedbackActionButton()}
+                onNegativeFeedback={() => onClickShareFeedbackActionButton()}
                 onExportTrajectory={() => onClickExportTrajectoryButton()}
               />
             )}
@@ -270,7 +233,6 @@ export function ChatInterface() {
           <FeedbackModal
             isOpen={feedbackModalIsOpen}
             onClose={() => setFeedbackModalIsOpen(false)}
-            polarity={feedbackPolarity}
           />
         )}
       </div>

@@ -2,6 +2,7 @@ import { isNumber } from "./is-number";
 import {
   VERIFIED_ANTHROPIC_MODELS,
   VERIFIED_OPENAI_MODELS,
+  VERIFIED_OPENROUTER_MODELS,
 } from "./verified-models";
 
 /**
@@ -47,9 +48,22 @@ export const extractModelAndProvider = (model: string) => {
     if (VERIFIED_ANTHROPIC_MODELS.includes(split[0])) {
       return { provider: "anthropic", model: split[0], separator: "/" };
     }
+    if (VERIFIED_OPENROUTER_MODELS.includes(split[0])) {
+      return { provider: "openrouter", model: split[0], separator: "/" };
+    }
     // return as model only
     return { provider: "", model, separator: "" };
   }
+
+  // Special case for OpenRouter models that include provider in model name
+  if (VERIFIED_OPENROUTER_MODELS.includes(split.join(separator))) {
+    return {
+      provider: "openrouter",
+      model: split.join(separator),
+      separator: "/",
+    };
+  }
+
   const [provider, ...modelId] = split;
   return { provider, model: modelId.join(separator), separator };
 };

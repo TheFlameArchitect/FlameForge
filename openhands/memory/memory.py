@@ -29,6 +29,8 @@ from openhands.utils.prompt import (
     RepositoryInfo,
     RuntimeInfo,
 )
+from openhands.events.observation.agent import AgentStateChangedObservation
+from openhands.core.schema.agent import AgentState
 
 GLOBAL_MICROAGENTS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(openhands.__file__)),
@@ -44,13 +46,6 @@ class Memory:
     (a RecallAction) and publishes observations with the content (such as RecallObservation).
     """
 
-    sid: str
-    event_stream: EventStream
-    status_callback: Callable | None
-    loop: asyncio.AbstractEventLoop | None
-    repo_microagents: dict[str, RepoMicroagent]
-    knowledge_microagents: dict[str, KnowledgeMicroagent]
-
     def __init__(
         self,
         event_stream: EventStream,
@@ -61,6 +56,7 @@ class Memory:
         self.sid = sid if sid else str(uuid.uuid4())
         self.status_callback = status_callback
         self.loop = None
+        self._is_initialized = False
 
         self.event_stream.subscribe(
             EventStreamSubscriber.MEMORY,
@@ -77,6 +73,11 @@ class Memory:
         self.runtime_info: RuntimeInfo | None = None
         self.conversation_instructions: ConversationInstructions | None = None
 
+    def initialize(self):
+        """Initialize the memory system after the agent is ready."""
+        if self._is_initialized:
+            return
+
         # Load global microagents (Knowledge + Repo)
         # from typically OpenHands/microagents (i.e., the PUBLIC microagents)
         self._load_global_microagents()
@@ -84,14 +85,25 @@ class Memory:
         # Load user microagents from ~/.openhands/microagents/
         self._load_user_microagents()
 
+        self._is_initialized = True
+
     def on_event(self, event: Event):
         """Handle an event from the event stream."""
+        logger.info(f'🎯 Memory received event: {type(event).__name__} (id={getattr(event, "id", "N/A")}) - initialized={self._is_initialized}')
+
+        # Don't process events until initialized
+        if not self._is_initialized and not isinstance(event, AgentStateChangedObservation):
+            logger.warning(f'⚠️ Memory blocking event {type(event).__name__} because not initialized (is_initialized={self._is_initialized})')
+            return
+
         asyncio.get_event_loop().run_until_complete(self._on_event(event))
 
     async def _on_event(self, event: Event):
         """Handle an event from the event stream asynchronously."""
         try:
             if isinstance(event, RecallAction):
+                logger.info(f'🔍 Processing RecallAction: id={event.id}, source={event.source}, recall_type={event.recall_type}, query="{event.query[:50]}..."')
+
                 # if this is a workspace context recall (on first user message)
                 # create and add a RecallObservation
                 # with info about repo, runtime, instructions, etc. including microagent knowledge if any
@@ -102,13 +114,19 @@ class Memory:
                     logger.debug('Workspace context recall')
                     workspace_obs: RecallObservation | NullObservation | None = None
 
-                    workspace_obs = self._on_workspace_context_recall(event)
-                    if workspace_obs is None:
-                        workspace_obs = NullObservation(content='')
+                    try:
+                        workspace_obs = self._on_workspace_context_recall(event)
+                        if workspace_obs is None:
+                            workspace_obs = NullObservation(content='')
+                        logger.info(f'📝 Created workspace observation for RecallAction id={event.id}')
+                    except Exception as e:
+                        logger.error(f'❌ Error creating workspace observation for RecallAction id={event.id}: {e}')
+                        workspace_obs = NullObservation(content=f'Error in workspace recall: {e}')
 
                     # important: this will release the execution flow from waiting for the retrieval to complete
                     workspace_obs._cause = event.id  # type: ignore[union-attr]
 
+                    logger.info(f'🚀 Sending workspace observation for RecallAction id={event.id} with cause={workspace_obs._cause}')
                     self.event_stream.add_event(workspace_obs, EventSource.ENVIRONMENT)
                     return
 
@@ -122,17 +140,39 @@ class Memory:
                         f'Microagent knowledge recall from {event.source} message'
                     )
                     microagent_obs: RecallObservation | NullObservation | None = None
-                    microagent_obs = self._on_microagent_recall(event)
-                    if microagent_obs is None:
-                        microagent_obs = NullObservation(content='')
+
+                    try:
+                        microagent_obs = self._on_microagent_recall(event)
+                        if microagent_obs is None:
+                            microagent_obs = NullObservation(content='')
+                        logger.info(f'📝 Created microagent observation for RecallAction id={event.id}')
+                    except Exception as e:
+                        logger.error(f'❌ Error creating microagent observation for RecallAction id={event.id}: {e}')
+                        microagent_obs = NullObservation(content=f'Error in microagent recall: {e}')
 
                     # important: this will release the execution flow from waiting for the retrieval to complete
                     microagent_obs._cause = event.id  # type: ignore[union-attr]
 
+                    logger.info(f'🚀 Sending microagent observation for RecallAction id={event.id} with cause={microagent_obs._cause}')
                     self.event_stream.add_event(microagent_obs, EventSource.ENVIRONMENT)
                     return
+                else:
+                    logger.warning(f'⚠️ RecallAction id={event.id} did not match any handling conditions: source={event.source}, recall_type={event.recall_type}')
+                    # Create a fallback NullObservation to prevent hanging
+                    fallback_obs = NullObservation(content=f'Unhandled RecallAction: source={event.source}, recall_type={event.recall_type}')
+                    fallback_obs._cause = event.id  # type: ignore[union-attr]
+                    logger.info(f'🚀 Sending fallback observation for RecallAction id={event.id}')
+                    self.event_stream.add_event(fallback_obs, EventSource.ENVIRONMENT)
+                    return
+
+            elif isinstance(event, AgentStateChangedObservation):
+                if event.agent_state == AgentState.RUNNING and not self._is_initialized:
+                    logger.info('🔧 Memory initializing due to AgentState.RUNNING')
+                    self.initialize()
+                    logger.info('✅ Memory initialization complete')
         except Exception as e:
             error_str = f'Error: {str(e.__class__.__name__)}'
+            logger.error(f'❌ Critical error in Memory._on_event: {error_str}')
             logger.error(error_str)
             self.set_runtime_status(RuntimeStatus.ERROR_MEMORY, error_str)
             return

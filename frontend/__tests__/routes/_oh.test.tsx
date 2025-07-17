@@ -11,6 +11,7 @@ import i18n from "#/i18n";
 import * as CaptureConsent from "#/utils/handle-capture-consent";
 import OpenHands from "#/api/open-hands";
 import * as ToastHandlers from "#/utils/custom-toast-handlers";
+import { MOCK_DEFAULT_USER_SETTINGS } from "#/mocks/handlers";
 
 describe("frontend/routes/_oh", () => {
   const RouteStub = createRoutesStub([{ Component: MainApp, path: "/" }]);
@@ -79,10 +80,7 @@ describe("frontend/routes/_oh", () => {
       },
     });
 
-    // @ts-expect-error - We only care about the user_consents_to_analytics field
-    getSettingsSpy.mockResolvedValue({
-      user_consents_to_analytics: null,
-    });
+    getSettingsSpy.mockResolvedValue(MOCK_DEFAULT_USER_SETTINGS);
 
     renderWithProviders(<RouteStub />);
 

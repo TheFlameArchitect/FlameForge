@@ -11,14 +11,9 @@ import { FeedbackForm } from "./feedback-form";
 interface FeedbackModalProps {
   onClose: () => void;
   isOpen: boolean;
-  polarity: "positive" | "negative";
 }
 
-export function FeedbackModal({
-  onClose,
-  isOpen,
-  polarity,
-}: FeedbackModalProps) {
+export function FeedbackModal({ onClose, isOpen }: FeedbackModalProps) {
   const { t } = useTranslation();
   if (!isOpen) return null;
 
@@ -27,7 +22,7 @@ export function FeedbackModal({
       <ModalBody className="border border-tertiary">
         <BaseModalTitle title={t(I18nKey.FEEDBACK$TITLE)} />
         <BaseModalDescription description={t(I18nKey.FEEDBACK$DESCRIPTION)} />
-        <FeedbackForm onClose={onClose} polarity={polarity} />
+        <FeedbackForm onClose={onClose} />
       </ModalBody>
     </ModalBackdrop>
   );

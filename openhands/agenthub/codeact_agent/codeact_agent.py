@@ -90,8 +90,13 @@ class CodeActAgent(Agent):
         # Create a ConversationMemory instance
         self.conversation_memory = ConversationMemory(self.config, self.prompt_manager)
 
-        self.condenser = Condenser.from_config(self.config.condenser)
-        logger.debug(f'Using condenser: {type(self.condenser)}')
+        # Handle condenser initialization - condenser can be None if disabled
+        if self.config.condenser is not None:
+            self.condenser = Condenser.from_config(self.config.condenser)
+            logger.debug(f'Using condenser: {type(self.condenser)}')
+        else:
+            self.condenser = None
+            logger.debug('Condenser disabled (config.condenser is None)')
 
     @property
     def prompt_manager(self) -> PromptManager:
@@ -116,6 +121,7 @@ class CodeActAgent(Agent):
             )
 
         tools = []
+
         if self.config.enable_cmd:
             tools.append(create_cmd_run_tool(use_short_description=use_short_tool_desc))
         if self.config.enable_think:
@@ -139,6 +145,7 @@ class CodeActAgent(Agent):
                     use_short_description=use_short_tool_desc
                 )
             )
+
         return tools
 
     def reset(self) -> None:
@@ -176,12 +183,18 @@ class CodeActAgent(Agent):
         # event we'll just return that instead of an action. The controller will
         # immediately ask the agent to step again with the new view.
         condensed_history: list[Event] = []
-        match self.condenser.condensed_history(state):
-            case View(events=events):
-                condensed_history = events
 
-            case Condensation(action=condensation_action):
-                return condensation_action
+        if self.condenser is not None:
+            # Use condenser if available
+            match self.condenser.condensed_history(state):
+                case View(events=events):
+                    condensed_history = events
+
+                case Condensation(action=condensation_action):
+                    return condensation_action
+        else:
+            # If condenser is disabled, use full history
+            condensed_history = state.history
 
         logger.debug(
             f'Processing {len(condensed_history)} events from a total of {len(state.history)} events'
@@ -272,7 +285,18 @@ class CodeActAgent(Agent):
         return messages
 
     def response_to_actions(self, response: 'ModelResponse') -> list['Action']:
-        return codeact_function_calling.response_to_actions(
+        actions = codeact_function_calling.response_to_actions(
             response,
             mcp_tool_names=list(self.mcp_tools.keys()),
         )
+
+        # Filter out condensation requests if condensation is disabled
+        if not self.config.enable_condensation_request:
+            from openhands.events.action.agent import CondensationRequestAction
+            original_count = len(actions)
+            actions = [action for action in actions if not isinstance(action, CondensationRequestAction)]
+            filtered_count = original_count - len(actions)
+            if filtered_count > 0:
+                logger.warning(f'Filtered out {filtered_count} condensation request action(s) because condensation is disabled')
+
+        return actions

@@ -5,24 +5,27 @@ import os
 import pickle
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import openhands
 from openhands.controller.state.control_flags import (
     BudgetControlFlag,
     IterationControlFlag,
 )
+from openhands.core.config.agent_config import AgentConfig
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema import AgentState
 from openhands.events.action import (
     MessageAction,
 )
-from openhands.events.action.agent import AgentFinishAction
+from openhands.events.action.agent import AgentFinishAction, CondensationAction, CondensationRequestAction
 from openhands.events.event import Event, EventSource
 from openhands.llm.metrics import Metrics
 from openhands.memory.view import View
 from openhands.storage.files import FileStore
 from openhands.storage.locations import get_conversation_agent_state_filename
+
+import time
 
 RESUMABLE_STATES = [
     AgentState.RUNNING,
@@ -42,6 +45,80 @@ class TrafficControlState(str, Enum):
 
     # traffic control is temporarily paused
     PAUSED = 'paused'
+
+
+class State:
+    """Represents the current state of an agent conversation."""
+
+    def __init__(self):
+        self.history: List[Event] = []
+        self.extra_data: Dict[str, Any] = {}
+
+    def add_history(self, event: Event) -> None:
+        """Add an event to the history."""
+        self.history.append(event)
+
+
+class StateTracker:
+    """Tracks the state of an agent conversation."""
+
+    def __init__(self, config: AgentConfig):
+        self.config = config
+        self._state = State()
+        self._is_condensing = False
+        self._last_condensation_time = 0
+        self._min_condensation_interval = 1.0  # Minimum time between condensations
+
+    def request_condensation(self) -> None:
+        """Request that the history be condensed."""
+        # Don't request condensation if it's disabled
+        if not self.config.enable_condensation_request:
+            return
+
+        current_time = time.time()
+        if current_time - self._last_condensation_time < self._min_condensation_interval:
+            return
+
+        if not self._is_condensing:
+            self._is_condensing = True
+            self._last_condensation_time = current_time
+            self._state.add_history(CondensationRequestAction())
+
+    def apply_condensation(self, action: CondensationAction) -> None:
+        """Apply a condensation action to the state."""
+        self._state.add_history(action)
+        self._is_condensing = False
+
+    @property
+    def state(self) -> State:
+        """Get the current state."""
+        return self._state
+
+    def add_history(self, event: Event) -> None:
+        """Add an event to the history.
+
+        This method also handles condensation requests and actions.
+        """
+        # Don't process condensation events if we're already condensing
+        if self._is_condensing and (
+            isinstance(event, CondensationRequestAction) or
+            isinstance(event, CondensationAction)
+        ):
+            return
+
+        # Add the event to history
+        self._state.add_history(event)
+
+        # Check if we need to request condensation due to history size
+        # Only do this if condensation is enabled
+        if (
+            self.config.enable_condensation_request and
+            self.config.enable_history_truncation and
+            len(self._state.history) > 100 and  # Arbitrary threshold
+            not self._is_condensing and
+            time.time() - self._last_condensation_time >= self._min_condensation_interval
+        ):
+            self.request_condensation()
 
 
 @dataclass
